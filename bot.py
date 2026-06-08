@@ -4,20 +4,22 @@ import instaloader
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
-# خواندن توکن از متغیر محیطی (امن‌تر)
+# خواندن توکن از متغیر محیطی
 TOKEN = os.environ.get("BOT_TOKEN")
 if not TOKEN:
     raise ValueError("متغیر محیطی BOT_TOKEN تنظیم نشده است!")
 
-# مسیر ذخیره موقت در Railway (در root پروژه)
+# پوشه ذخیره موقت
 TEMP_DIR = "temp_downloads"
 if not os.path.exists(TEMP_DIR):
     os.makedirs(TEMP_DIR)
 
+# تشخیص لینک اینستاگرام
 def is_instagram_link(text):
     pattern = r'(https?://(?:www\.)?instagram\.com/(?:p|reel|tv)/[a-zA-Z0-9_-]+/?.*)'
     return re.match(pattern, text)
 
+# دانلود محتوا از اینستاگرام
 async def download_instagram_content(url):
     try:
         L = instaloader.Instaloader(
@@ -56,6 +58,7 @@ async def download_instagram_content(url):
         print(f"خطا در دانلود: {e}")
         return None, None
 
+# پاک کردن فایل‌های موقت
 def cleanup_temp_files():
     for f in os.listdir(TEMP_DIR):
         file_path = os.path.join(TEMP_DIR, f)
@@ -63,68 +66,71 @@ def cleanup_temp_files():
             if os.path.isfile(file_path):
                 os.remove(file_path)
         except Exception as e:
-            print(f"خطا در پاک کردن {file_path}: {e}")
+            print(f"خطا در پاک کردن: {e}")
 
+# دستور /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    welcome_text = """
-🎬 به بات دانلودر اینستاگرام خوش آمدید!
+    await update.message.reply_text(
+        "🎬 به بات دانلودر اینستاگرام خوش آمدید!\n\n"
+        "✅ لینک پست، ریلز یا ویدیوی اینستاگرام را برای من بفرستید.\n"
+        "✅ محتوا را دانلود کرده و برایتان ارسال می‌کنم.\n\n"
+        "⚠️ توجه: فقط صفحات عمومی قابل دانلود هستند."
+    )
 
-📌 نحوه استفاده:
-لینک پست، ریلز یا ویدیوی اینستاگرام را مستقیماً برای بات ارسال کنید.
+# دستور /help
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "📖 راهنما:\n\n"
+        "1. لینک اینستاگرام را کپی کنید.\n"
+        "2. در همین چت برای من بفرستید.\n"
+        "3. چند ثانیه صبر کنید تا دانلود و ارسال شود.\n\n"
+        "مثال لینک معتبر:\n"
+        "https://www.instagram.com/p/Cx123456789/"
+    )
 
-✅ پشتیبانی:
-- پست‌های عادی (عکس و ویدیو)
-- ریلز (Reels)
-- ویدیوهای چندگانه (Carousel)
-
-⚠️ توجه:
-- محتوای خصوصی قابل دانلود نیست.
-- حداکثر حجم 50 مگابایت
-"""
-    await update.message.reply_text(welcome_text)
-
+# پردازش لینک اینستاگرام
 async def handle_instagram_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = update.message.text.strip()
     
-    waiting_msg = await update.message.reply_text("⏳ در حال دریافت محتوا از اینستاگرام...")
+    # بررسی معتبر بودن لینک
+    if not is_instagram_link(url):
+        await update.message.reply_text("❌ لینک معتبر اینستاگرام نیست.\nلینک باید از نوع /p، /reel یا /tv باشد.")
+        return
+    
+    waiting_msg = await update.message.reply_text("⏳ در حال دریافت محتوا از اینستاگرام... لطفاً صبر کنید.")
     
     file_path, file_type = await download_instagram_content(url)
     
     if not file_path:
-        await waiting_msg.edit_text("❌ خطا: محتوا یافت نشد. لینک معتبر و عمومی باشد.")
+        await waiting_msg.edit_text("❌ خطا: محتوا یافت نشد.\nممکن است صفحه خصوصی باشد یا لینک نادرست است.")
         return
     
     try:
         with open(file_path, 'rb') as f:
             if file_type == 'video':
-                await update.message.reply_video(video=f, caption="✅ دانلود شد!")
+                await update.message.reply_video(video=f, caption="✅ دانلود با موفقیت انجام شد!")
             else:
-                await update.message.reply_photo(photo=f, caption="✅ دانلود شد!")
+                await update.message.reply_photo(photo=f, caption="✅ دانلود با موفقیت انجام شد!")
         
         await waiting_msg.delete()
         
     except Exception as e:
-        await waiting_msg.edit_text(f"❌ خطا در ارسال: {str(e)[:100]}")
+        await waiting_msg.edit_text(f"❌ خطا در ارسال فایل: {str(e)[:100]}")
     
     finally:
         cleanup_temp_files()
 
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    help_text = """
-📖 راهنما:
-• لینک اینستاگرام را مستقیماً بفرستید.
-• مثال: https://www.instagram.com/p/Cx123456789/
-"""
-    await update.message.reply_text(help_text)
-
+# تابع اصلی
 def main():
+    print("🤖 بات در حال راه‌اندازی...")
+    
     app = Application.builder().token(TOKEN).build()
     
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_instagram_link))
     
-    print("✅ بات در حال اجراست...")
+    print("✅ بات با موفقیت روشن شد! در حال انتظار برای پیام‌ها...")
     app.run_polling()
 
 if __name__ == "__main__":
