@@ -27,47 +27,44 @@ async def download_instagram_content(url):
             filename_pattern="{shortcode}",
             save_metadata=False,
             post_metadata_txt_pattern="",
-            max_connection_attempts=3,
-            quiet=True
+            max_connection_attempts=2,
+            quiet=True,
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
         )
         
-        # لاگین به اینستاگرام
+        # روش جدید لاگین با save session
         if INSTA_USERNAME and INSTA_PASSWORD:
             try:
-                L.login(INSTA_USERNAME, INSTA_PASSWORD)
-                print(f"✅ لاگین شد به {INSTA_USERNAME}")
+                # لاگین با session file
+                session_file = f"{INSTA_USERNAME}_session"
+                if os.path.exists(session_file):
+                    L.load_session_from_file(INSTA_USERNAME, session_file)
+                    print(f"✅ سشن بارگذاری شد برای {INSTA_USERNAME}")
+                else:
+                    L.login(INSTA_USERNAME, INSTA_PASSWORD)
+                    L.save_session_to_file(session_file)
+                    print(f"✅ لاگین شد و سشن ذخیره شد برای {INSTA_USERNAME}")
             except Exception as e:
                 error_detail = f"لاگین ناموفق: {str(e)[:100]}"
                 print(error_detail)
-                return None, None, error_detail
+                # ادامه بدون لاگین
+                pass
         
-        # روش جدید دریافت پست
-        try:
-            # استخراج shortcode از لینک
-            match = re.search(r'/(p|reel|tv)/([a-zA-Z0-9_-]+)/?', url)
-            if not match:
-                return None, None, "لینک معتبر نیست"
-            
-            shortcode = match.group(2)
-            print(f"✅ shortcode: {shortcode}")
-            
-            # دریافت پست با shortcode
-            post = instaloader.Post.from_shortcode(L.context, shortcode)
-            print(f"✅ پست پیدا شد: {post.shortcode}")
-            
-        except Exception as e:
-            error_detail = f"پست پیدا نشد: {str(e)[:100]}"
-            print(error_detail)
-            return None, None, error_detail
+        # استخراج shortcode از لینک
+        match = re.search(r'/(p|reel|tv)/([a-zA-Z0-9_-]+)/?', url)
+        if not match:
+            return None, None, "لینک معتبر نیست"
+        
+        shortcode = match.group(2)
+        print(f"✅ shortcode: {shortcode}")
+        
+        # دریافت پست
+        post = instaloader.Post.from_shortcode(L.context, shortcode)
+        print(f"✅ پست پیدا شد: {post.shortcode}")
         
         # دانلود
-        try:
-            L.download_post(post, target_dir=TEMP_DIR)
-            print("✅ دانلود کامل شد")
-        except Exception as e:
-            error_detail = f"دانلود ناموفق: {str(e)[:100]}"
-            print(error_detail)
-            return None, None, error_detail
+        L.download_post(post, target_dir=TEMP_DIR)
+        print("✅ دانلود کامل شد")
         
         # پیدا کردن فایل
         files = os.listdir(TEMP_DIR)
@@ -87,10 +84,10 @@ async def download_instagram_content(url):
         elif image_file:
             return image_file, 'image', None
         else:
-            return None, None, "فایل دانلود شده پیدا نشد"
+            return None, None, "فایل پیدا نشد"
             
     except Exception as e:
-        error_detail = f"خطای عمومی: {str(e)[:200]}"
+        error_detail = f"خطا: {str(e)[:200]}"
         print(error_detail)
         return None, None, error_detail
 
@@ -106,34 +103,34 @@ def cleanup_temp_files():
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "🎬 به بات دانلودر اینستاگرام خوش آمدید!\n\n"
-        "✅ لینک اینستاگرام را بفرستید تا محتوا را دانلود کنم.\n\n"
-        "⚠️ توجه: فقط صفحات عمومی قابل دانلود هستند."
+        "✅ لینک اینستاگرام را بفرستید.\n"
+        "✅ پشتیبانی: پست و ریلز\n\n"
+        "⚠️ فقط صفحات عمومی"
     )
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "لینک اینستاگرام را بفرستید.\n"
-        "مثال: https://www.instagram.com/p/Cx123456789/\n\n"
-        "پشتیبانی: پست‌ها و ریلز"
+        "مثال: https://www.instagram.com/p/Cx123456789/"
     )
 
 async def handle_instagram_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = update.message.text.strip()
     
     if not is_instagram_link(url):
-        await update.message.reply_text("❌ لینک معتبر اینستاگرام نیست.")
+        await update.message.reply_text("❌ لینک معتبر نیست.")
         return
     
-    waiting_msg = await update.message.reply_text("⏳ در حال دریافت از اینستاگرام... (حداکثر 30 ثانیه)")
+    waiting_msg = await update.message.reply_text("⏳ در حال دریافت...")
     
     file_path, file_type, error = await download_instagram_content(url)
     
     if not file_path:
-        error_text = "❌ خطا: محتوا یافت نشد.\n\n"
+        error_text = "❌ خطا\n\n"
         if error:
-            error_text += f"📋 جزئیات خطا:\n`{error}`"
+            error_text += f"`{error[:150]}`"
         else:
-            error_text += "ممکن است:\n- صفحه خصوصی باشد\n- لینک نادرست باشد\n- اینستاگرام محدودیت ایجاد کرده باشد"
+            error_text += "صفحه خصوصی یا لینک نامعتبر"
         
         await waiting_msg.edit_text(error_text, parse_mode='Markdown')
         return
@@ -148,7 +145,7 @@ async def handle_instagram_link(update: Update, context: ContextTypes.DEFAULT_TY
         await waiting_msg.delete()
         
     except Exception as e:
-        await waiting_msg.edit_text(f"❌ خطا در ارسال: {str(e)[:100]}")
+        await waiting_msg.edit_text(f"❌ خطا: {str(e)[:100]}")
     
     finally:
         cleanup_temp_files()
@@ -156,15 +153,13 @@ async def handle_instagram_link(update: Update, context: ContextTypes.DEFAULT_TY
 def main():
     print("🤖 Bot starting...")
     if INSTA_USERNAME:
-        print(f"✅ با اکانت اینستاگرام {INSTA_USERNAME} لاگین می‌شوم")
-    else:
-        print("⚠️ بدون لاگین (ممکن است محدودیت داشته باشد)")
+        print(f"📱 اکانت اینستاگرام: {INSTA_USERNAME}")
     
     app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_instagram_link))
-    print("✅ Bot is running! منتظر پیام‌ها...")
+    print("✅ Bot is running!")
     app.run_polling()
 
 if __name__ == "__main__":
