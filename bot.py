@@ -5,8 +5,11 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
 TOKEN = os.environ.get("BOT_TOKEN")
+INSTA_USERNAME = os.environ.get("INSTA_USERNAME")
+INSTA_PASSWORD = os.environ.get("INSTA_PASSWORD")
+
 if not TOKEN:
-    raise ValueError("متغیر محیطی BOT_TOKEN تنظیم نشده است!")
+    raise ValueError("BOT_TOKEN تنظیم نشده است")
 
 TEMP_DIR = "temp_downloads"
 if not os.path.exists(TEMP_DIR):
@@ -26,6 +29,11 @@ async def download_instagram_content(url):
             max_connection_attempts=3,
             quiet=True
         )
+        
+        # لاگین به اینستاگرام
+        if INSTA_USERNAME and INSTA_PASSWORD:
+            L.login(INSTA_USERNAME, INSTA_PASSWORD)
+            print(f"✅ لاگین شد به {INSTA_USERNAME}")
         
         post = instaloader.Post.from_url(url)
         L.download_post(post, target_dir=TEMP_DIR)
@@ -82,12 +90,12 @@ async def handle_instagram_link(update: Update, context: ContextTypes.DEFAULT_TY
         await update.message.reply_text("❌ لینک معتبر نیست.")
         return
     
-    waiting_msg = await update.message.reply_text("⏳ در حال دریافت...")
+    waiting_msg = await update.message.reply_text("⏳ در حال دریافت از اینستاگرام...")
     
     file_path, file_type = await download_instagram_content(url)
     
     if not file_path:
-        await waiting_msg.edit_text("❌ خطا: محتوا یافت نشد.")
+        await waiting_msg.edit_text("❌ خطا: محتوا یافت نشد.\nمطمئن شوید:\n- صفحه عمومی باشد\n- لینک درست باشد")
         return
     
     try:
@@ -100,13 +108,18 @@ async def handle_instagram_link(update: Update, context: ContextTypes.DEFAULT_TY
         await waiting_msg.delete()
         
     except Exception as e:
-        await waiting_msg.edit_text(f"❌ خطا: {str(e)[:100]}")
+        await waiting_msg.edit_text(f"❌ خطا در ارسال: {str(e)[:100]}")
     
     finally:
         cleanup_temp_files()
 
 def main():
     print("🤖 Bot starting...")
+    if INSTA_USERNAME:
+        print(f"✅ با اکانت اینستاگرام {INSTA_USERNAME} لاگین می‌شوم")
+    else:
+        print("⚠️ بدون لاگین (ممکن است محدودیت داشته باشد)")
+    
     app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_command))
